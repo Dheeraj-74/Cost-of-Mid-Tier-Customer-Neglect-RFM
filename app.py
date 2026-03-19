@@ -20,16 +20,13 @@ SEGMENT_ORDER = ['L', 'M1', 'M2', 'M3', 'H']
 # Optimize loading data using st.cache_data
 @st.cache_data
 def load_and_preprocess_data():
-    # Load previously exported Tableau segmented datasets to bypass missing raw data
     df_segmented = pd.read_csv('notebooks/tableau_transactions_segmented.csv')
     rfm = pd.read_csv('notebooks/tableau_rfm_customers.csv', index_col=0)
     
-    # Preprocessing to restore datatypes
     df_segmented['InvoiceDate'] = pd.to_datetime(df_segmented['InvoiceDate'], errors='coerce')
     df_segmented['YearMonth'] = pd.to_datetime(df_segmented['YearMonth']).dt.to_period('M')
     df_segmented['YearMonthStr'] = df_segmented['YearMonth'].astype(str)
     
-    # Ensure Extended_Segment remains categorical for warnings 
     df_segmented['Extended_Segment'] = pd.Categorical(df_segmented['Extended_Segment'], categories=SEGMENT_ORDER, ordered=True)
     rfm['Extended_Segment'] = pd.Categorical(rfm['Extended_Segment'], categories=SEGMENT_ORDER, ordered=True)
     
@@ -37,23 +34,19 @@ def load_and_preprocess_data():
 
 with st.spinner('Loading processed data...'):
     df_segmented, rfm = load_and_preprocess_data()
-    # Mock df using df_segmented to power remaining plots seamlessly
     df = df_segmented  
 
-# Side bar for navigation
 st.sidebar.title("Navigation")
 st.sidebar.markdown("---")
-# Clean names for nav without emojis
-nav = st.sidebar.radio("Go to Section", [
-    "Business Summary", 
+nav = st.sidebar.selectbox("Jump to Section:", [
     "Customer & Revenue Overview", 
     "Retention & Migration", 
-    "Mid-Tier Analysis"
+    "Mid-Tier Analysis",
+    "Business Summary"
 ])
 
 st.title("Cost of Mid-Tier Customer Neglect")
 st.markdown("### RFM Analysis Dashboard")
-
 st.markdown("---")
 
 # Pre-calculate main data
@@ -139,8 +132,163 @@ def calculate_migration_and_churn(df_segmented, months):
 
 migration_matrix, churn_df, revenue_lost_df = calculate_migration_and_churn(df_segmented, months)
 
-if nav == "Business Summary":
-    st.header("Executive Summary")
+
+if nav == "Customer & Revenue Overview":
+    st.header("Customer & Revenue Overview")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Customer Segment Distribution (3-Tier)")
+        st.caption("Gives overall customer base structure.")
+        segment_counts = rfm['Customer_Segment'].value_counts()
+        fig1, ax1 = plt.subplots(figsize=(6, 4))
+        segment_counts.plot(kind='bar', ax=ax1, color=['#4E6B8C', '#E8A838', '#7B5EA7'], edgecolor='white')
+        ax1.set_xlabel('Segment')
+        ax1.set_ylabel('Customer Count')
+        ax1.tick_params(axis='x', rotation=0)
+        st.pyplot(fig1)
+
+    with col2:
+        st.subheader("Customer Count per Segment Over Time")
+        st.caption("Shows growth/decline of customer base.")
+        fig2, ax2 = plt.subplots(figsize=(8, 4))
+        for seg in SEGMENT_ORDER:
+            ax2.plot(monthly_segment_customers.index, monthly_segment_customers[seg],
+                    marker='o', label=seg, color=PALETTE[seg], linewidth=2)
+        ax2.set_xlabel('Month')
+        ax2.set_ylabel('Unique Customers')
+        ax2.tick_params(axis='x', rotation=45)
+        ax2.legend(title='Segment')
+        st.pyplot(fig2)
+        
+    st.markdown("---")
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.subheader("Monthly Revenue Contribution by Segment")
+        st.caption("Shows who generates revenue.")
+        fig3, ax3 = plt.subplots(figsize=(8, 5))
+        bottom = np.zeros(len(monthly_segment_revenue))
+        for seg in SEGMENT_ORDER:
+            ax3.bar(
+                monthly_segment_revenue.index,
+                monthly_segment_revenue[seg],
+                bottom=bottom,
+                label=seg,
+                color=PALETTE[seg]
+            )
+            bottom += monthly_segment_revenue[seg].values
+
+        ax3.set_xlabel('Month')
+        ax3.set_ylabel('Revenue (£)')
+        ax3.tick_params(axis='x', rotation=45)
+        ax3.legend(title='Segment')
+        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+        st.pyplot(fig3)
+
+    with col4:
+        st.subheader("Average Revenue per Customer by Segment")
+        st.caption("Measures customer value.")
+        avg_rev_per_customer = monthly_segment_revenue / monthly_segment_customers.replace(0, np.nan)
+        fig4, ax4 = plt.subplots(figsize=(8, 5))
+        for seg in SEGMENT_ORDER:
+            ax4.plot(avg_rev_per_customer.index, avg_rev_per_customer[seg],
+                    marker='s', label=seg, color=PALETTE[seg], linewidth=2)
+        ax4.set_xlabel('Month')
+        ax4.set_ylabel('Avg Revenue per Customer (£)')
+        ax4.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+        ax4.tick_params(axis='x', rotation=45)
+        ax4.legend(title='Segment')
+        st.pyplot(fig4)
+
+
+elif nav == "Retention & Migration":
+    st.header("Retention & Migration")
+    st.subheader("Segment Migration Heatmap")
+    st.caption("Directly shows retention (diagonal), downgrade (towards L), and upgrade (towards H).")
+    fig1, ax1 = plt.subplots(figsize=(10, 6))
+    sns.heatmap(migration_matrix.astype(int), annot=True, fmt='d', cmap='Blues',
+                linewidths=0.5, ax=ax1)
+    ax1.set_xlabel('Segment (To)')
+    ax1.set_ylabel('Segment (From)')
+    st.pyplot(fig1)
+    
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Mid-Tier Churn Rate")
+        st.caption("Customers leaving mid-tier (Measures loss of customers).")
+        fig2, ax2 = plt.subplots(figsize=(8, 4))
+        ax2.plot(churn_df['Month'], churn_df['ChurnRate'], marker='o', color='#D46A6A', linewidth=2.5)
+        ax2.fill_between(churn_df['Month'], churn_df['ChurnRate'], alpha=0.15, color='#D46A6A')
+        ax2.set_xlabel('Month')
+        ax2.set_ylabel('Churn Rate (%)')
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:.1f}%'))
+        ax2.tick_params(axis='x', rotation=45)
+        st.pyplot(fig2)
+
+    with col2:
+        st.subheader("Revenue Lost to Downgrade (Mid → L)")
+        st.caption("Monthly revenue loss (Measures financial impact of churn).")
+        fig3, ax3 = plt.subplots(figsize=(8, 4))
+        ax3.bar(revenue_lost_df['Month'], revenue_lost_df['RevenueLost'], color='#D46A6A', edgecolor='white')
+        ax3.set_xlabel('Month')
+        ax3.set_ylabel('Estimated Revenue Lost (£)')
+        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+        ax3.tick_params(axis='x', rotation=45)
+        st.pyplot(fig3)
+
+
+elif nav == "Mid-Tier Analysis":
+    st.header("Mid-Tier Analysis (MAIN FOCUS)")
+    
+    st.subheader("Top 10 Products by Mid-Tier Revenue")
+    st.caption("Products preferred by M1/M2/M3 (Shows behavior of mid-tier customers).")
+    mid_tier_txns = df_segmented[df_segmented['Extended_Segment'].isin(['M1', 'M2', 'M3'])]
+    top_products = (
+        mid_tier_txns.groupby('Description', observed=False)['TotalPrice']
+        .sum()
+        .nlargest(10)
+        .sort_values()
+    )
+    fig1, ax1 = plt.subplots(figsize=(10, 5))
+    top_products.plot(kind='barh', ax=ax1, color='#6BAA75', edgecolor='white')
+    ax1.set_xlabel('Total Revenue (£)')
+    ax1.set_ylabel('Product Description')
+    ax1.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+    st.pyplot(fig1)
+    
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Revenue Lost to Downgrade")
+        st.caption("Mid → L revenue drop (Core problem: mid-tier decline).")
+        fig2, ax2 = plt.subplots(figsize=(8, 4))
+        ax2.bar(revenue_lost_df['Month'], revenue_lost_df['RevenueLost'], color='#D46A6A', edgecolor='white')
+        ax2.set_xlabel('Month')
+        ax2.set_ylabel('Estimated Revenue Lost (£)')
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+        ax2.tick_params(axis='x', rotation=45)
+        st.pyplot(fig2)
+
+    with col2:
+        st.subheader("Mid-Tier Churn Rate")
+        st.caption("Leaving customers (Measures mid-tier instability).")
+        fig3, ax3 = plt.subplots(figsize=(8, 4))
+        ax3.plot(churn_df['Month'], churn_df['ChurnRate'], marker='o', color='#D46A6A', linewidth=2.5)
+        ax3.fill_between(churn_df['Month'], churn_df['ChurnRate'], alpha=0.15, color='#D46A6A')
+        ax3.set_xlabel('Month')
+        ax3.set_ylabel('Churn Rate (%)')
+        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:.1f}%'))
+        ax3.tick_params(axis='x', rotation=45)
+        st.pyplot(fig3)
+
+
+elif nav == "Business Summary":
+    st.header("Business Summary")
     
     @st.cache_data
     def calculate_summary(monthly_segment_revenue, df_segmented, months):
@@ -200,186 +348,3 @@ if nav == "Business Summary":
 
     st.markdown("### Segment Summary Table")
     st.dataframe(summary_df)
-
-    st.markdown("### Top 10 Products by Revenue (Mid-Tier)")
-    mid_tier_txns = df_segmented[df_segmented['Extended_Segment'].isin(['M1', 'M2', 'M3'])]
-    top_products = (
-        mid_tier_txns.groupby('Description', observed=False)['TotalPrice']
-        .sum()
-        .nlargest(10)
-        .sort_values()
-    )
-
-    fig11, ax11 = plt.subplots(figsize=(10, 5))
-    top_products.plot(kind='barh', ax=ax11, color='#6BAA75', edgecolor='white')
-    ax11.set_title('Top 10 Products by Revenue — Mid-Tier Customers (M1+M2+M3)', fontsize=13)
-    ax11.set_xlabel('Total Revenue (£)')
-    ax11.set_ylabel('Product Description')
-    ax11.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
-    st.pyplot(fig11)
-
-elif nav == "Customer & Revenue Overview":
-    st.header("Customer & Revenue Overview")
-    
-    t1, t2 = st.tabs(["Revenue Metrics", "Customer Base Metrics"])
-    
-    with t1:
-        st.subheader("Monthly Revenue Contribution by Customer Segment")
-        fig4, ax4 = plt.subplots(figsize=(12, 5))
-        bottom = np.zeros(len(monthly_segment_revenue))
-        for seg in SEGMENT_ORDER:
-            ax4.bar(
-                monthly_segment_revenue.index,
-                monthly_segment_revenue[seg],
-                bottom=bottom,
-                label=seg,
-                color=PALETTE[seg]
-            )
-            bottom += monthly_segment_revenue[seg].values
-
-        ax4.set_xlabel('Month')
-        ax4.set_ylabel('Revenue (£)')
-        ax4.tick_params(axis='x', rotation=45)
-        ax4.legend(title='Segment', bbox_to_anchor=(1.01, 1), loc='upper left')
-        ax4.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
-        st.pyplot(fig4)
-
-        st.subheader("Average Order Value (AOV) Trend Over Time")
-        df_aov = df.copy()
-        df_aov['Month'] = df_aov['InvoiceDate'].dt.to_period('M').astype(str)
-        invoice_totals = df_aov.groupby(['InvoiceNo', 'Month'], observed=False)['TotalPrice'].sum().reset_index()
-        aov_trend = invoice_totals.groupby('Month', observed=False)['TotalPrice'].mean().reset_index()
-
-        fig1, ax1 = plt.subplots(figsize=(12, 5))
-        sns.lineplot(data=aov_trend, x='Month', y='TotalPrice', marker='o', color='b', linewidth=2, ax=ax1)
-        ax1.set_xlabel('Month')
-        ax1.set_ylabel('Average Order Value ($)')
-        ax1.tick_params(axis='x', rotation=45)
-        ax1.grid(True, linestyle='--', alpha=0.6)
-        st.pyplot(fig1)
-
-    with t2:
-        colA, colB = st.columns(2)
-        with colA:
-            st.subheader("Customer Segment Distribution (3-Tier)")
-            segment_counts = rfm['Customer_Segment'].value_counts()
-            fig3, ax3 = plt.subplots(figsize=(6, 4))
-            segment_counts.plot(kind='bar', ax=ax3, color=['#4E6B8C', '#E8A838', '#7B5EA7'], edgecolor='white')
-            ax3.set_xlabel('Segment')
-            ax3.set_ylabel('Customer Count')
-            ax3.tick_params(axis='x', rotation=0)
-            st.pyplot(fig3)
-        
-        with colB:
-            st.subheader("RFM Score Distribution by Segment")
-            rfm_plot = rfm[['R_score', 'F_score', 'M_score', 'Extended_Segment']].copy()
-            rfm_plot[['R_score', 'F_score', 'M_score']] = rfm_plot[['R_score', 'F_score', 'M_score']].astype(float)
-            
-            fig9, axes = plt.subplots(1, 3, figsize=(10, 4), sharey=False)
-            for ax, score, label in zip(axes, ['R_score', 'F_score', 'M_score'], ['Recency', 'Frequency', 'Monetary']):
-                sns.boxplot(
-                    data=rfm_plot,
-                    x='Extended_Segment', 
-                    hue='Extended_Segment',
-                    y=score,
-                    order=SEGMENT_ORDER,
-                    palette=PALETTE,
-                    ax=ax,
-                    legend=False
-                )
-                ax.set_title(label)
-                ax.set_xlabel('')
-                ax.set_ylabel('Score' if ax == axes[0] else '')
-            st.pyplot(fig9)
-            
-        st.subheader("Customer Count per Segment Over Time")
-        fig5, ax5 = plt.subplots(figsize=(12, 4))
-        for seg in SEGMENT_ORDER:
-            ax5.plot(monthly_segment_customers.index, monthly_segment_customers[seg],
-                    marker='o', label=seg, color=PALETTE[seg], linewidth=2)
-        ax5.set_xlabel('Month')
-        ax5.set_ylabel('Unique Customers')
-        ax5.tick_params(axis='x', rotation=45)
-        ax5.legend(title='Segment')
-        st.pyplot(fig5)
-
-elif nav == "Retention & Migration":
-    st.header("Retention & Segment Migration")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Segment Migration Heatmap")
-        st.markdown("Shows customer migration across segments in consecutive months.")
-        fig7, ax7 = plt.subplots(figsize=(7, 5))
-        sns.heatmap(migration_matrix.astype(int), annot=True, fmt='d', cmap='Blues',
-                    linewidths=0.5, ax=ax7)
-        ax7.set_xlabel('Segment (To)')
-        ax7.set_ylabel('Segment (From)')
-        st.pyplot(fig7)
-        
-    with col2:
-        st.subheader("Customer Cohort Retention")
-        df_cohort = df.copy()
-        df_cohort['InvoiceMonth'] = df_cohort['InvoiceDate'].dt.to_period('M').dt.to_timestamp()
-        df_cohort['CohortMonth'] = df_cohort.groupby('CustomerID', observed=False)['InvoiceMonth'].transform('min')
-
-        def get_date_int(dframe, column):
-            return dframe[column].dt.year, dframe[column].dt.month
-
-        invoice_year, invoice_month = get_date_int(df_cohort, 'InvoiceMonth')
-        cohort_year, cohort_month = get_date_int(df_cohort, 'CohortMonth')
-
-        df_cohort['CohortIndex'] = (invoice_year - cohort_year) * 12 + (invoice_month - cohort_month) + 1 
-
-        cohort_data = df_cohort.groupby(['CohortMonth', 'CohortIndex'], observed=False)['CustomerID'].nunique().reset_index()
-        cohort_counts = cohort_data.pivot(index='CohortMonth', columns='CohortIndex', values='CustomerID')
-        retention = cohort_counts.divide(cohort_counts.iloc[:, 0], axis=0)
-        retention.index = retention.index.strftime('%Y-%m')
-
-        fig2, ax2 = plt.subplots(figsize=(8, 5))
-        sns.heatmap(
-            retention, annot=False, cmap='YlOrRd', ax=ax2
-        )
-        ax2.set_xlabel('Months Since First Purchase')
-        ax2.set_ylabel('Cohort (Month of First Purchase)')
-        st.pyplot(fig2)
-
-elif nav == "Mid-Tier Analysis":
-    st.header("Mid-Tier Analysis Focus")
-    st.markdown("Understanding churn and downgrade behaviors within the middle tiers.")
-    
-    t1, t2 = st.tabs(["Churn Trends", "Average Revenue Impact"])
-    with t1:
-        st.subheader("Mid-Tier Churn Rate Over Time (M1/M2/M3 → L or Inactive)")
-        fig8, ax8 = plt.subplots(figsize=(10, 4))
-        ax8.plot(churn_df['Month'], churn_df['ChurnRate'], marker='o', color='#D46A6A', linewidth=2.5)
-        ax8.fill_between(churn_df['Month'], churn_df['ChurnRate'], alpha=0.15, color='#D46A6A')
-        ax8.set_xlabel('Month')
-        ax8.set_ylabel('Churn Rate (%)')
-        ax8.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:.1f}%'))
-        ax8.tick_params(axis='x', rotation=45)
-        st.pyplot(fig8)
-
-        st.subheader("Estimated Revenue Lost to Mid-Tier Downgrade per Month")
-        fig10, ax10 = plt.subplots(figsize=(10, 4))
-        ax10.bar(revenue_lost_df['Month'], revenue_lost_df['RevenueLost'], color='#D46A6A', edgecolor='white')
-        ax10.set_xlabel('Month')
-        ax10.set_ylabel('Estimated Revenue Lost (£)')
-        ax10.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
-        ax10.tick_params(axis='x', rotation=45)
-        st.pyplot(fig10)
-        
-    with t2:
-        st.subheader("Average Revenue per Customer by Segment")
-        avg_rev_per_customer = monthly_segment_revenue / monthly_segment_customers.replace(0, np.nan)
-        fig6, ax6 = plt.subplots(figsize=(10, 5))
-        for seg in SEGMENT_ORDER:
-            ax6.plot(avg_rev_per_customer.index, avg_rev_per_customer[seg],
-                    marker='s', label=seg, color=PALETTE[seg], linewidth=2)
-        ax6.set_xlabel('Month')
-        ax6.set_ylabel('Avg Revenue per Customer (£)')
-        ax6.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
-        ax6.tick_params(axis='x', rotation=45)
-        ax6.legend(title='Segment')
-        st.pyplot(fig6)
