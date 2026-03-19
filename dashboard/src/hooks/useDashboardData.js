@@ -1,10 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { csvParse } from 'd3-dsv';
+import DataWorker from '../workers/dataWorker?worker';
 
 export function useDashboardData() {
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  const [advancedData, setAdvancedData] = useState(null);
+  const [workerProgress, setWorkerProgress] = useState('');
 
   useEffect(() => {
     setIsLoading(true);
@@ -25,6 +29,24 @@ export function useDashboardData() {
       })
       .catch(err => setError(err))
       .finally(() => setIsLoading(false));
+
+    // Initialize Advanced Data Web Worker
+    const worker = new DataWorker();
+    setWorkerProgress('Initializing Worker...');
+    worker.onmessage = (e) => {
+      if (e.data.type === 'PROGRESS') {
+        setWorkerProgress(e.data.payload);
+      } else if (e.data.type === 'COMPLETE') {
+        setAdvancedData(e.data.payload);
+        setWorkerProgress('');
+      } else if (e.data.type === 'ERROR') {
+        console.error('Worker Error:', e.data.payload);
+        setWorkerProgress('Failed to load advanced data.');
+      }
+    };
+    worker.postMessage({ type: 'START_PROCESSING' });
+
+    return () => worker.terminate();
   }, []);
 
   const metrics = useMemo(() => {
@@ -104,5 +126,5 @@ export function useDashboardData() {
     };
   }, [data]);
 
-  return { data, metrics, isLoading, error };
+  return { data, metrics, isLoading, error, advancedData, workerProgress };
 }

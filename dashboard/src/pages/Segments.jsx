@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData';
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Package } from 'lucide-react';
 
 export default function Segments() {
-  const { metrics, isLoading, error } = useDashboardData();
+  const { metrics, isLoading, error, advancedData } = useDashboardData();
   const [activeTab, setActiveTab] = useState('All Segments');
 
   if (isLoading) return <div className="loading-container">Loading...</div>;
   if (error) return <div className="loading-container">Error!</div>;
 
   const tabs = ['All Segments', 'Mid Tier', 'Top Tier', 'Bottom Tier'];
+
+  const { topProducts } = advancedData || {};
 
   const currentMetrics = metrics.segmentMetrics[activeTab] || {
     avgRecency: 0,
@@ -83,6 +86,23 @@ export default function Segments() {
           </div>
         </div>
       </div>
+
+      {activeTab === 'Mid Tier' && topProducts && (
+        <div className="card" style={{marginTop: '35px'}}>
+          <h3 className="card-title"><Package size={18} color="var(--red-accent)" /> Top 10 Products by Revenue (Mid-Tier)</h3>
+          <div className="chart-card" style={{height: '350px'}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topProducts} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                <XAxis type="number" tickFormatter={(val) => `$${val/1000}k`} axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} />
+                <YAxis type="category" dataKey="Product" axisLine={false} tickLine={false} tick={{fill: '#4b5563', fontSize: 11, fontWeight: 600}} width={100} />
+                <Tooltip formatter={(val) => `$${val.toLocaleString()}`} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} cursor={{fill: 'rgba(0,0,0,0.02)'}} />
+                <Bar dataKey="Revenue" fill="var(--red-accent)" radius={[0, 4, 4, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
