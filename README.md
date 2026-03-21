@@ -57,10 +57,5 @@ This Business Analytics project investigates the hidden cost associated with neg
 5. **Start exploring the raw data:** 
    Place your dataset in the `data/` folder and open the Jupyter Notebooks to view the mathematical RFM logic.
 
-## 👥 Contributors
-- **Praseeda** 
-- **Dheeraj**
-- **TEAM 7 - Syndicate**
-
 ---
 *Created as part of 23CSE452 – Business Analytics.*
