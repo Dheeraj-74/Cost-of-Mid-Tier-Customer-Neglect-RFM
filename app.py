@@ -40,7 +40,6 @@ st.sidebar.title("Navigation")
 st.sidebar.markdown("---")
 nav = st.sidebar.selectbox("Jump to Section:", [
     "Customer & Revenue Overview", 
-    "Retention & Migration", 
     "Mid-Tier Analysis",
     "Business Summary"
 ])
@@ -201,45 +200,6 @@ if nav == "Customer & Revenue Overview":
         ax4.tick_params(axis='x', rotation=45)
         ax4.legend(title='Segment')
         st.pyplot(fig4)
-
-
-elif nav == "Retention & Migration":
-    st.header("Retention & Migration")
-    st.subheader("Segment Migration Heatmap")
-    st.caption("Directly shows retention (diagonal), downgrade (towards L), and upgrade (towards H).")
-    fig1, ax1 = plt.subplots(figsize=(10, 6))
-    sns.heatmap(migration_matrix.astype(int), annot=True, fmt='d', cmap='Blues',
-                linewidths=0.5, ax=ax1)
-    ax1.set_xlabel('Segment (To)')
-    ax1.set_ylabel('Segment (From)')
-    st.pyplot(fig1)
-    
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Mid-Tier Churn Rate")
-        st.caption("Customers leaving mid-tier (Measures loss of customers).")
-        fig2, ax2 = plt.subplots(figsize=(8, 4))
-        ax2.plot(churn_df['Month'], churn_df['ChurnRate'], marker='o', color='#D46A6A', linewidth=2.5)
-        ax2.fill_between(churn_df['Month'], churn_df['ChurnRate'], alpha=0.15, color='#D46A6A')
-        ax2.set_xlabel('Month')
-        ax2.set_ylabel('Churn Rate (%)')
-        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:.1f}%'))
-        ax2.tick_params(axis='x', rotation=45)
-        st.pyplot(fig2)
-
-    with col2:
-        st.subheader("Revenue Lost to Downgrade (Mid → L)")
-        st.caption("Monthly revenue loss (Measures financial impact of churn).")
-        fig3, ax3 = plt.subplots(figsize=(8, 4))
-        ax3.bar(revenue_lost_df['Month'], revenue_lost_df['RevenueLost'], color='#D46A6A', edgecolor='white')
-        ax3.set_xlabel('Month')
-        ax3.set_ylabel('Estimated Revenue Lost (£)')
-        ax3.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
-        ax3.tick_params(axis='x', rotation=45)
-        st.pyplot(fig3)
-
 
 elif nav == "Mid-Tier Analysis":
     st.header("Mid-Tier Analysis (MAIN FOCUS)")
